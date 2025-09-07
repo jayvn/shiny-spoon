@@ -1,4 +1,5 @@
-# Future implementation
+1% done
+# target implementation. 
 
 # Poor Man's Covered Call (PMCC) Strategy
 
