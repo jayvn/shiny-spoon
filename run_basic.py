@@ -5,12 +5,13 @@ Buys ATM calls when no position, sells when position exists.
 Logs trades to CSV with timestamps and P&L.
 """
 
-import datetime
-from ib_async import IB, Stock, Option, MarketOrder
-import pickle
 import csv
+import datetime
+import pickle
 import sys
 from pathlib import Path
+
+from ib_async import IB, MarketOrder, Option, Stock
 
 # Configuration
 PORT = 4002
@@ -18,9 +19,10 @@ CLIENT_ID = 0
 TICKER = "SPY"
 DTE_DAYS = 1
 
+
 class SimpleOptionStrategy:
     """Simple daily option trading strategy - buy and sell a single option"""
-    
+
     def __init__(self, ib: IB, ticker: str = TICKER, dte_days: int = DTE_DAYS):
         self.ib = ib
         self.ticker = ticker
@@ -30,26 +32,36 @@ class SimpleOptionStrategy:
         self.current_position = None
         # Initialize CSV if doesn't exist
         if not self.trades_file.exists():
-            with self.trades_file.open('w', newline='') as f:
+            with self.trades_file.open("w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(['timestamp', 'action', 'ticker', 'strike', 'expiry', 'price', 'pnl'])
-    
+                writer.writerow(
+                    [
+                        "timestamp",
+                        "action",
+                        "ticker",
+                        "strike",
+                        "expiry",
+                        "price",
+                        "pnl",
+                    ]
+                )
+
     def save_state(self):
         """Save current position to file"""
-        with self.state_file.open('wb') as f:
+        with self.state_file.open("wb") as f:
             pickle.dump(self.current_position, f)
-    
+
     def load_state(self) -> bool:
         """Load saved position if exists"""
         if self.state_file.exists():
-            with self.state_file.open('rb') as f:
+            with self.state_file.open("rb") as f:
                 self.current_position = pickle.load(f)
             return True
         return False
-    
-    def get_atm_option(self, right: str = 'C') -> Option:
+
+    def get_atm_option(self, right: str = "C") -> Option:
         """Get at-the-money option with target DTE"""
-        stock = Stock(self.ticker, 'SMART', 'USD')
+        stock = Stock(self.ticker, "SMART", "USD")
         self.ib.qualifyContracts(stock)
 
         tickers = self.ib.reqTickers(stock)
@@ -57,7 +69,9 @@ class SimpleOptionStrategy:
         strike = round(current_price)
 
         target_date = datetime.date.today() + datetime.timedelta(days=self.dte_days)
-        chains = self.ib.reqSecDefOptParams(stock.symbol, '', stock.secType, stock.conId)
+        chains = self.ib.reqSecDefOptParams(
+            stock.symbol, "", stock.secType, stock.conId
+        )
 
         expirations: list[str] = []
         for chain in chains:
@@ -65,16 +79,18 @@ class SimpleOptionStrategy:
         expirations = sorted(set(expirations))
         closest_expiry = min(
             expirations,
-            key=lambda x: abs(datetime.datetime.strptime(x, '%Y%m%d').date() - target_date),
+            key=lambda x: abs(
+                datetime.datetime.strptime(x, "%Y%m%d").date() - target_date
+            ),
         )
 
-        option = Option(self.ticker, closest_expiry, strike, right, 'SMART')
+        option = Option(self.ticker, closest_expiry, strike, right, "SMART")
         return self.ib.qualifyContracts(option)[0]
-    
+
     def buy_option(self) -> bool:
         """Buy a single option contract"""
-        option = self.get_atm_option('C')
-        order = MarketOrder('BUY', 1)
+        option = self.get_atm_option("C")
+        order = MarketOrder("BUY", 1)
         trade = self.ib.placeOrder(option, order)
 
         while not trade.isDone():
@@ -82,69 +98,73 @@ class SimpleOptionStrategy:
 
         fill_price = trade.orderStatus.avgFillPrice
         self.current_position = {
-            'contract': option,
-            'side': 'BUY',
-            'entry_price': fill_price,
-            'entry_time': datetime.datetime.now().isoformat(),
-            'strike': option.strike,
-            'expiry': option.lastTradeDateOrContractMonth,
+            "contract": option,
+            "side": "BUY",
+            "entry_price": fill_price,
+            "entry_time": datetime.datetime.now().isoformat(),
+            "strike": option.strike,
+            "expiry": option.lastTradeDateOrContractMonth,
         }
         print(f"Bought {self.ticker} {option.strike} Call @ ${fill_price:.2f}")
 
-        with self.trades_file.open('a', newline='') as f:
+        with self.trades_file.open("a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                datetime.datetime.now().isoformat(),
-                'BUY',
-                self.ticker,
-                option.strike,
-                option.lastTradeDateOrContractMonth,
-                fill_price,
-                0,
-            ])
+            writer.writerow(
+                [
+                    datetime.datetime.now().isoformat(),
+                    "BUY",
+                    self.ticker,
+                    option.strike,
+                    option.lastTradeDateOrContractMonth,
+                    fill_price,
+                    0,
+                ]
+            )
 
         self.save_state()
         return True
-    
+
     def sell_option(self) -> bool:
         """Sell the current option position"""
-        contract = self.current_position['contract']
+        contract = self.current_position["contract"]
 
-        order = MarketOrder('SELL', 1)
+        order = MarketOrder("SELL", 1)
         trade = self.ib.placeOrder(contract, order)
 
         while not trade.isDone():
             self.ib.sleep(1)
 
         exit_price = trade.orderStatus.avgFillPrice
-        entry_price = self.current_position['entry_price']
+        entry_price = self.current_position["entry_price"]
         pnl = (exit_price - entry_price) * 100
 
         print(f"Sold {self.ticker} {contract.strike} Call @ ${exit_price:.2f}")
         print(f"P&L: ${pnl:.2f}")
 
-        with self.trades_file.open('a', newline='') as f:
+        with self.trades_file.open("a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                datetime.datetime.now().isoformat(),
-                'SELL',
-                self.ticker,
-                contract.strike,
-                contract.lastTradeDateOrContractMonth,
-                exit_price,
-                round(pnl, 2),
-            ])
+            writer.writerow(
+                [
+                    datetime.datetime.now().isoformat(),
+                    "SELL",
+                    self.ticker,
+                    contract.strike,
+                    contract.lastTradeDateOrContractMonth,
+                    exit_price,
+                    round(pnl, 2),
+                ]
+            )
 
         self.current_position = None
         self.save_state()
         return True
-    
+
     def display_position(self):
         """Display current position"""
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print(f"POSITION STATUS - {self.ticker}")
-        print("="*50)
-        
+        print("=" * 50)
+
         if self.current_position:
             pos = self.current_position
             print(f"Position: LONG {pos['strike']} Call")
@@ -152,22 +172,22 @@ class SimpleOptionStrategy:
             print(f"Entry Time: {pos['entry_time']}")
             print(f"Expiry: {pos['expiry']}")
 
-            tickers = self.ib.reqTickers(pos['contract'])
+            tickers = self.ib.reqTickers(pos["contract"])
             current_price = tickers[0].marketPrice()
-            pnl = (current_price - pos['entry_price']) * 100
+            pnl = (current_price - pos["entry_price"]) * 100
             print(f"Current Price: ${current_price:.2f}")
             print(f"Unrealized P&L: ${pnl:.2f}")
         else:
             print("No active position")
-        
-        print("="*50 + "\n")
-    
+
+        print("=" * 50 + "\n")
+
     def run_daily(self):
         """Run daily trading logic"""
         print(f"=== Daily Run for {self.ticker} ===")
-        
+
         self.load_state()
-        
+
         # Simple logic: If no position, buy. If have position, sell.
         if self.current_position:
             print("Have position - selling")
@@ -175,7 +195,7 @@ class SimpleOptionStrategy:
         else:
             print("No position - buying")
             self.buy_option()
-        
+
         # Display current status
         self.display_position()
 
@@ -183,9 +203,9 @@ class SimpleOptionStrategy:
 def main():
     """Main entry point - connect to IB and run strategy"""
     ib = IB()
-    
+
     print(f"Connecting to IB on port {PORT}...")
-    ib.connect('127.0.0.1', PORT, clientId=CLIENT_ID)
+    ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
     print("Connected")
 
     strategy = SimpleOptionStrategy(ib, ticker=TICKER, dte_days=DTE_DAYS)

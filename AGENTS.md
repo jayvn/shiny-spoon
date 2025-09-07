@@ -1,7 +1,11 @@
-# Repository Guidelines
-# NO DEFENSIVE PROGRAMMING
-# KEEP IT SHORT AND SIMPLE
-# ITS ONLY PAPER TRADING ACCOUNT
+* Repository Guidelines
+* NO DEFENSIVE PROGRAMMING
+* KEEP IT SHORT AND SIMPLE
+* ITS ONLY PAPER TRADING ACCOUNT
+* USE RUFF CHECK AND RUFF FORMATTING INCLUDING  import sorting and whatever after each edit
+* use basedpyright for checking if code will work 
+---
+
 ## Project Structure & Module Organization
 - `run_basic.py` — main script for the simple options strategy (entry point).
 - `requirements.txt` — Python dependencies.
