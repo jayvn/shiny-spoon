@@ -7,7 +7,6 @@ Logs trades to CSV with timestamps and P&L.
 
 import csv
 import datetime
-import pickle
 import sys
 from pathlib import Path
 
@@ -27,7 +26,6 @@ class SimpleOptionStrategy:
         self.ib = ib
         self.ticker = ticker
         self.dte_days = dte_days
-        self.state_file = Path(f"state_{ticker}.pkl")
         self.trades_file = Path(f"trades_{ticker}.csv")
         self.current_position = None
         # Initialize CSV if doesn't exist
@@ -46,18 +44,27 @@ class SimpleOptionStrategy:
                     ]
                 )
 
-    def save_state(self):
-        """Save current position to file"""
-        with self.state_file.open("wb") as f:
-            pickle.dump(self.current_position, f)
-
-    def load_state(self) -> bool:
-        """Load saved position if exists"""
-        if self.state_file.exists():
-            with self.state_file.open("rb") as f:
-                self.current_position = pickle.load(f)
-            return True
-        return False
+    def last_trade(self):
+        """Return last trade row as dict or None"""
+        if not self.trades_file.exists():
+            return None
+        last = None
+        with self.trades_file.open("r", newline="") as f:
+            rdr = csv.reader(f)
+            next(rdr, None)
+            for row in rdr:
+                last = row
+        if not last:
+            return None
+        return {
+            "timestamp": last[0],
+            "action": last[1],
+            "ticker": last[2],
+            "strike": float(last[3]),
+            "expiry": last[4],
+            "price": float(last[5]),
+            "pnl": float(last[6]) if last[6] else 0.0,
+        }
 
     def get_atm_option(self, right: str = "C") -> Option:
         """Get at-the-money option with target DTE"""
@@ -121,12 +128,12 @@ class SimpleOptionStrategy:
                 ]
             )
 
-        self.save_state()
         return True
 
-    def sell_option(self) -> bool:
-        """Sell the current option position"""
-        contract = self.current_position["contract"]
+    def sell_option(self, strike: float, expiry: str, entry_price: float) -> bool:
+        """Sell the current option position reconstructed from CSV"""
+        option = Option(self.ticker, expiry, strike, "C", "SMART")
+        contract = self.ib.qualifyContracts(option)[0]
 
         order = MarketOrder("SELL", 1)
         trade = self.ib.placeOrder(contract, order)
@@ -135,7 +142,6 @@ class SimpleOptionStrategy:
             self.ib.sleep(1)
 
         exit_price = trade.orderStatus.avgFillPrice
-        entry_price = self.current_position["entry_price"]
         pnl = (exit_price - entry_price) * 100
 
         print(f"Sold {self.ticker} {contract.strike} Call @ ${exit_price:.2f}")
@@ -156,7 +162,6 @@ class SimpleOptionStrategy:
             )
 
         self.current_position = None
-        self.save_state()
         return True
 
     def display_position(self):
@@ -165,16 +170,17 @@ class SimpleOptionStrategy:
         print(f"POSITION STATUS - {self.ticker}")
         print("=" * 50)
 
-        if self.current_position:
-            pos = self.current_position
-            print(f"Position: LONG {pos['strike']} Call")
-            print(f"Entry Price: ${pos['entry_price']:.2f}")
-            print(f"Entry Time: {pos['entry_time']}")
-            print(f"Expiry: {pos['expiry']}")
-
-            tickers = self.ib.reqTickers(pos["contract"])
+        last = self.last_trade()
+        if last and last["action"] == "BUY":
+            print(f"Position: LONG {last['strike']} Call")
+            print(f"Entry Price: ${last['price']:.2f}")
+            print(f"Entry Time: {last['timestamp']}")
+            print(f"Expiry: {last['expiry']}")
+            option = Option(self.ticker, last["expiry"], last["strike"], "C", "SMART")
+            contract = self.ib.qualifyContracts(option)[0]
+            tickers = self.ib.reqTickers(contract)
             current_price = tickers[0].marketPrice()
-            pnl = (current_price - pos["entry_price"]) * 100
+            pnl = (current_price - last["price"]) * 100
             print(f"Current Price: ${current_price:.2f}")
             print(f"Unrealized P&L: ${pnl:.2f}")
         else:
@@ -186,12 +192,10 @@ class SimpleOptionStrategy:
         """Run daily trading logic"""
         print(f"=== Daily Run for {self.ticker} ===")
 
-        self.load_state()
-
-        # Simple logic: If no position, buy. If have position, sell.
-        if self.current_position:
+        last = self.last_trade()
+        if last and last["action"] == "BUY":
             print("Have position - selling")
-            self.sell_option()
+            self.sell_option(strike=last["strike"], expiry=last["expiry"], entry_price=last["price"])
         else:
             print("No position - buying")
             self.buy_option()
@@ -227,7 +231,6 @@ if __name__ == "__main__":
     
     Files created:
     - trades_SPY.csv: Trade log with timestamps and P&L
-    - state_SPY.pkl: Saved position state
     
     Usage:
         python strategy.py
