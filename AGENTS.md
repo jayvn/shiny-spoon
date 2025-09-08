@@ -2,7 +2,6 @@
 * NO DEFENSIVE PROGRAMMING
 * KEEP IT SHORT AND SIMPLE
 * ITS ONLY PAPER TRADING ACCOUNT
-* USE RUFF CHECK AND RUFF FORMATTING INCLUDING  import sorting and whatever after each edit
 * use basedpyright for checking if code will work 
 ---
 
@@ -16,8 +15,11 @@
 ## Build, Test, and Development Commands
 - Create env: `python -m venv .venv && source .venv/bin/activate`
 - Install deps: `pip install -r requirements.txt`
-- Run locally: `python run_basic.py`
+- python run_pmcc.py is the main file 
+- this is a basic test implementation: `python run_basic.py`
 - Nix/direnv: `nix-shell` or `direnv allow` (see `shell.nix`/`.envrc`).
 - IB setup: Ensure IB Gateway/TWS is running and API enabled on `127.0.0.1:4002` (edit `PORT`, `TICKER`, `DTE_DAYS` at top of `run_basic.py`).
 
 source .venv/bin/activate and uv pip install
+in the future:
+* use ruff check and ruff formatting including  import sorting and whatever after each edit

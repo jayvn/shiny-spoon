@@ -9,7 +9,7 @@ import csv
 import datetime
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -157,27 +157,34 @@ def find_leaps_option(ib: IB, ticker: str):
     target_date = datetime.date.today() + datetime.timedelta(days=LEAPS_MIN_DTE)
     chains = ib.reqSecDefOptParams(stock.symbol, "", stock.secType, stock.conId)
 
-    expirations = []
-    for chain in chains:
-        expirations.extend(chain.expirations)
-    expirations = sorted(set(expirations))
+    # Get all strikes and expirations from chains
+    all_strikes = set()
+    valid_expirations = []
 
-    valid_expirations = [
-        exp
-        for exp in expirations
-        if datetime.datetime.strptime(exp, "%Y%m%d").date() >= target_date
-    ]
+    for chain in chains:
+        if chain.tradingClass == ticker:  # Use main trading class only
+            for exp in chain.expirations:
+                exp_date = datetime.datetime.strptime(exp, "%Y%m%d").date()
+                if exp_date >= target_date:
+                    valid_expirations.append(exp)
+                    all_strikes.update(chain.strikes)
 
     if not valid_expirations:
         print(f"No LEAPS found with DTE >= {LEAPS_MIN_DTE}")
         return None
 
+    # Sort and get closest expiry
+    valid_expirations = sorted(set(valid_expirations))
     closest_expiry = valid_expirations[0]
 
-    # Find strikes around current price
-    test_strikes = [
-        round(current_price * mult) for mult in [0.85, 0.9, 0.95, 1.0, 1.05, 1.1]
-    ]
+    # Filter strikes near current price for LEAPS (80-110% of spot)
+    min_strike = current_price * 0.8
+    max_strike = current_price * 1.1
+    test_strikes = sorted(
+        [int(s) for s in all_strikes if min_strike <= s <= max_strike]
+    )
+
+    print(f"Testing {len(test_strikes)} strikes for LEAPS (exp {closest_expiry})...")
 
     best_option = None
     best_delta_diff = float("inf")
@@ -187,13 +194,22 @@ def find_leaps_option(ib: IB, ticker: str):
         try:
             contract = ib.qualifyContracts(option)[0]
             delta = get_option_delta(ib, contract)
+
+            if delta == 0:  # Skip if no delta available
+                continue
+
             delta_diff = abs(delta - LEAPS_DELTA_TARGET)
 
-            if delta >= LEAPS_DELTA_TARGET - 0.1 and delta_diff < best_delta_diff:
+            if delta >= LEAPS_DELTA_TARGET - 0.15 and delta_diff < best_delta_diff:
                 best_option = contract
                 best_delta_diff = delta_diff
+
         except Exception:
             continue
+
+    if best_option:
+        delta = get_option_delta(ib, best_option)
+        print(f"Selected LEAPS: Strike ${best_option.strike}, Delta {delta:.3f}")
 
     return best_option
 
@@ -203,28 +219,47 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float):
     stock = Stock(ticker, "SMART", "USD")
     ib.qualifyContracts(stock)
 
-    target_date = datetime.date.today() + datetime.timedelta(days=SHORT_DTE_TARGET)
-    chains = ib.reqSecDefOptParams(stock.symbol, "", stock.secType, stock.conId)
-
-    expirations = []
-    for chain in chains:
-        expirations.extend(chain.expirations)
-    expirations = sorted(set(expirations))
-
-    closest_expiry = min(
-        expirations,
-        key=lambda x: abs(datetime.datetime.strptime(x, "%Y%m%d").date() - target_date),
-    )
-
     tickers = ib.reqTickers(stock)
     current_price = tickers[0].marketPrice()
 
-    # Test strikes above LEAPS strike
-    test_strikes = [
-        s
-        for s in range(int(leaps_strike), int(current_price * 1.1))
-        if s > leaps_strike
-    ]
+    target_date = datetime.date.today() + datetime.timedelta(days=SHORT_DTE_TARGET)
+    chains = ib.reqSecDefOptParams(stock.symbol, "", stock.secType, stock.conId)
+
+    # Get all strikes and find closest expiry to target
+    all_strikes = set()
+    all_expirations = []
+
+    for chain in chains:
+        if chain.tradingClass == ticker:  # Use main trading class only
+            all_expirations.extend(chain.expirations)
+            all_strikes.update(chain.strikes)
+
+    if not all_expirations:
+        print("No expirations found")
+        return None
+
+    all_expirations = sorted(set(all_expirations))
+
+    # Find expiry closest to target DTE
+    closest_expiry = min(
+        all_expirations,
+        key=lambda x: abs(datetime.datetime.strptime(x, "%Y%m%d").date() - target_date),
+    )
+
+    # Filter strikes above LEAPS strike but below 110% of current price
+    min_strike = max(int(leaps_strike) + 1, int(current_price * 0.95))
+    max_strike = int(current_price * 1.15)
+    test_strikes = sorted(
+        [int(s) for s in all_strikes if min_strike <= s <= max_strike]
+    )
+
+    if not test_strikes:
+        print(f"No suitable strikes found above LEAPS ${leaps_strike}")
+        return None
+
+    print(
+        f"Testing {len(test_strikes)} strikes for short call (exp {closest_expiry})..."
+    )
 
     best_option = None
     best_delta_diff = float("inf")
@@ -234,13 +269,22 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float):
         try:
             contract = ib.qualifyContracts(option)[0]
             delta = get_option_delta(ib, contract)
+
+            if delta == 0:  # Skip if no delta available
+                continue
+
             delta_diff = abs(delta - SHORT_DELTA_TARGET)
 
-            if delta <= SHORT_DELTA_TARGET + 0.1 and delta_diff < best_delta_diff:
+            if delta <= SHORT_DELTA_TARGET + 0.15 and delta_diff < best_delta_diff:
                 best_option = contract
                 best_delta_diff = delta_diff
+
         except Exception:
             continue
+
+    if best_option:
+        delta = get_option_delta(ib, best_option)
+        print(f"Selected short call: Strike ${best_option.strike}, Delta {delta:.3f}")
 
     return best_option
 
