@@ -1,4 +1,3 @@
-ib_async
 numpy
 pandas
 ib_async
