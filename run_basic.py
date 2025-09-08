@@ -12,6 +12,8 @@ from pathlib import Path
 
 from ib_async import IB, MarketOrder, Option, Stock
 
+import option_trades
+
 # Configuration
 PORT = 4002
 CLIENT_ID = 0  # Using 0 allows auto-incrementing if connection exists
@@ -41,26 +43,7 @@ def init_csv(ticker: str):
 
 def last_trade(ticker: str):
     """Return last trade row as dict or None"""
-    trades_file = Path(f"output/trades_{ticker}.csv")
-    if not trades_file.exists():
-        return None
-    last = None
-    with trades_file.open("r", newline="") as f:
-        rdr = csv.reader(f)
-        next(rdr, None)
-        for row in rdr:
-            last = row
-    if not last:
-        return None
-    return {
-        "timestamp": last[0],
-        "action": last[1],
-        "ticker": last[2],
-        "strike": float(last[3]) if last[3] else 0.0,
-        "expiry": str(last[4]) if last[4] else "",
-        "price": float(last[5]) if last[5] else 0.0,
-        "pnl": float(last[6]) if last[6] else 0.0,
-    }
+    return option_trades.get_last_option_trade(ticker)
 
 
 def get_atm_option(ib: IB, ticker: str, dte_days: int, right: str = "C") -> Option:
@@ -108,20 +91,15 @@ def buy_option(ib: IB, ticker: str, dte_days: int) -> bool:
     fill_price = trade.orderStatus.avgFillPrice
     print(f"Bought {ticker} {option.strike} Call @ ${fill_price:.2f}")
 
-    trades_file = Path(f"output/trades_{ticker}.csv")
-    with trades_file.open("a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                datetime.datetime.now().isoformat(),
-                "BUY",
-                ticker,
-                option.strike,
-                option.lastTradeDateOrContractMonth,
-                fill_price,
-                0,
-            ]
-        )
+    # Log to comprehensive option trades CSV
+    option_trades.log_option_trade(
+        ib=ib,
+        action="BUY",
+        option_contract=option,
+        trade_price=fill_price,
+        option_type="CALL",
+        notes="ATM call purchase"
+    )
 
     return True
 
@@ -145,20 +123,16 @@ def sell_option(
     print(f"Sold {ticker} {contract.strike} Call @ ${exit_price:.2f}")
     print(f"P&L: ${pnl:.2f}")
 
-    trades_file = Path(f"output/trades_{ticker}.csv")
-    with trades_file.open("a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                datetime.datetime.now().isoformat(),
-                "SELL",
-                ticker,
-                contract.strike,
-                contract.lastTradeDateOrContractMonth,
-                exit_price,
-                round(pnl, 2),
-            ]
-        )
+    # Log to comprehensive option trades CSV
+    option_trades.log_option_trade(
+        ib=ib,
+        action="SELL",
+        option_contract=contract,
+        trade_price=exit_price,
+        option_type="CALL",
+        pnl=pnl,
+        notes="Closing ATM call position"
+    )
 
     return True
 
@@ -222,6 +196,7 @@ def main():
         print("Connected")
 
         init_csv(TICKER)
+        option_trades.init_option_trades_csv(TICKER)
         run_daily(ib, TICKER, DTE_DAYS)
 
     except Exception as e:
