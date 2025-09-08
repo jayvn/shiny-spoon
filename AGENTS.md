@@ -7,9 +7,13 @@
 
 ## Project Structure & Module Organization
 - `run_basic.py` — main script for the simple options strategy (entry point).
+- `run_pmcc.py` — main script for PMCC (Poor Man's Covered Call) strategy.
+- `option_trades.py` — comprehensive option trades logging with Greeks, IV, and market data.
+- `telegram_bot.py` — telegram notifications with formatted alerts for trades and positions.
+- `plot_pnl.py` — visualization tool for option trades P&L, Greeks, and underlying price analysis.
 - `requirements.txt` — Python dependencies.
 - `README.md` — strategy overview and usage.
-- Generated at runtime: `state_<TICKER>.pkl`, `trades_<TICKER>.csv`.
+- Generated at runtime: `state_<TICKER>.pkl`, `trades_<TICKER>.csv`, `option_trades_<TICKER>.csv`.
 - Future modules may live under a package (e.g., `pmcc_strategy/`) referenced in README; use snake_case module names and keep files small and focused.
 
 ## Build, Test, and Development Commands

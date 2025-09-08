@@ -98,7 +98,7 @@ def buy_option(ib: IB, ticker: str, dte_days: int) -> bool:
         option_contract=option,
         trade_price=fill_price,
         option_type="CALL",
-        notes="ATM call purchase"
+        notes="ATM call purchase",
     )
 
     return True
@@ -131,7 +131,7 @@ def sell_option(
         trade_price=exit_price,
         option_type="CALL",
         pnl=pnl,
-        notes="Closing ATM call position"
+        notes="Closing ATM call position",
     )
 
     return True
