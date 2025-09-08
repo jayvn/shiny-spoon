@@ -13,8 +13,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-from ib_async import IB, MarketOrder, Option, Stock
+from ib_async import IB, MarketOrder, Option, Stock, Contract
 
+import option_trades
 import telegram_bot as tg
 
 # Configuration
@@ -107,51 +108,8 @@ def init_csv(ticker: str):
             )
 
 
-def log_trade(
-    ticker: str,
-    action: str,
-    option_type: str,
-    strike: float,
-    expiry: str,
-    price: float,
-    delta: float = 0.0,
-    pnl: float = 0.0,
-    cumulative_pnl: float = 0.0,
-    notes: str = "",
-):
-    """Log trade to CSV and send Telegram notification"""
-    trades_file = Path(f"output/trades_{ticker}.csv")
-    with trades_file.open("a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                datetime.datetime.now().isoformat(),
-                action,
-                option_type,
-                ticker,
-                strike,
-                expiry,
-                price,
-                delta,
-                pnl,
-                cumulative_pnl,
-                notes,
-            ]
-        )
 
-    # Send to Telegram
-    alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
-    tg.send_trade_alert(
-        f"{action} {option_type}",
-        ticker,
-        strike,
-        expiry,
-        price,
-        **alert_params,
-    )
-
-
-def get_option_delta(ib: IB, option) -> float:
+def get_option_delta(ib: IB, option: Contract) -> float:
     """Get current delta for an option"""
     tickers = ib.reqTickers(option)
     if tickers and tickers[0].modelGreeks:
@@ -159,7 +117,7 @@ def get_option_delta(ib: IB, option) -> float:
     return 0.0
 
 
-def find_leaps_option(ib: IB, ticker: str):
+def find_leaps_option(ib: IB, ticker: str) -> Option | None:
     """Find best LEAPS option matching criteria"""
     stock = Stock(ticker, "SMART", "USD")
     ib.qualifyContracts(stock)
@@ -227,7 +185,7 @@ def find_leaps_option(ib: IB, ticker: str):
     return best_option
 
 
-def find_short_option(ib: IB, ticker: str, leaps_strike: float):
+def find_short_option(ib: IB, ticker: str, leaps_strike: float) -> Option | None:
     """Find best short call option to sell"""
     stock = Stock(ticker, "SMART", "USD")
     ib.qualifyContracts(stock)
@@ -346,6 +304,16 @@ def buy_leaps(ib: IB, ticker: str, state: PMCCState) -> bool:
         "Initial LEAPS purchase",
     )
 
+    # Also log to comprehensive option trades CSV
+    option_trades.log_option_trade(
+        ib=ib,
+        action="BUY",
+        option_contract=option,
+        trade_price=fill_price,
+        option_type="LEAPS",
+        notes="Initial LEAPS purchase",
+    )
+
     save_state(ticker, state)
     return True
 
@@ -393,6 +361,16 @@ def sell_short_call(ib: IB, ticker: str, state: PMCCState) -> bool:
         "Sold short call",
     )
 
+    # Also log to comprehensive option trades CSV
+    option_trades.log_option_trade(
+        ib=ib,
+        action="SELL",
+        option_contract=option,
+        trade_price=fill_price,
+        option_type="SHORT_CALL",
+        notes="Sold short call against LEAPS",
+    )
+
     save_state(ticker, state)
     return True
 
@@ -402,8 +380,13 @@ def close_short_call(ib: IB, ticker: str, state: PMCCState, reason: str) -> bool
     if not state.short_strike:
         return False
 
-    option = Option(ticker, state.short_expiry, state.short_strike, "C", "SMART")
-    contract = ib.qualifyContracts(option)[0]
+    option = Option(
+        ticker, str(state.short_expiry), float(state.short_strike), "C", "SMART"
+    )
+    qualified = ib.qualifyContracts(option)
+    contract = (
+        qualified[0] if qualified and isinstance(qualified[0], Option) else option
+    )
 
     order = MarketOrder("BUY", 1)
     trade = ib.placeOrder(contract, order)
@@ -429,6 +412,18 @@ def close_short_call(ib: IB, ticker: str, state: PMCCState, reason: str) -> bool
         pnl,
         state.realized_pnl,
         reason,
+    )
+
+    # Also log to comprehensive option trades CSV
+    option_trades.log_option_trade(
+        ib=ib,
+        action="BUY_TO_CLOSE",
+        option_contract=contract,
+        trade_price=exit_price,
+        option_type="SHORT_CALL",
+        pnl=pnl,
+        cumulative_pnl=state.realized_pnl,
+        notes=reason,
     )
 
     state.short_strike = None
@@ -513,7 +508,7 @@ def check_leaps_stop_loss(ib: IB, ticker: str, state: PMCCState) -> bool:
     return False
 
 
-def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState):
+def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState) -> None:
     """Close all positions"""
     print("LIQUIDATING ALL POSITIONS")
 
@@ -560,7 +555,7 @@ def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState):
     save_state(ticker, state)
 
 
-def manage_short_call(ib: IB, ticker: str, state: PMCCState):
+def manage_short_call(ib: IB, ticker: str, state: PMCCState) -> None:
     """Daily management of short call position"""
     if not state.short_strike or not state.short_expiry:
         return
@@ -594,7 +589,7 @@ def manage_short_call(ib: IB, ticker: str, state: PMCCState):
         roll_short_call(ib, ticker, state)
 
 
-def display_position_status(ib: IB, ticker: str, state: PMCCState):
+def display_position_status(ib: IB, ticker: str, state: PMCCState) -> None:
     """Display current position status"""
     print("\n" + "=" * 60)
     print(f"PMCC POSITION STATUS - {ticker}")
@@ -636,7 +631,7 @@ def display_position_status(ib: IB, ticker: str, state: PMCCState):
     print("=" * 60 + "\n")
 
 
-def run_daily(ib: IB, ticker: str):
+def run_daily(ib: IB, ticker: str) -> None:
     """Run daily PMCC management"""
     print(f"=== Daily PMCC Management for {ticker} ===")
 
@@ -673,6 +668,7 @@ def main():
     print("Connected")
 
     init_csv(TICKER)
+    option_trades.init_option_trades_csv(TICKER)
     run_daily(ib, TICKER)
 
     ib.disconnect()

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ib_async import IB, Option
 
+import telegram_bot as tg
+
 
 def init_option_trades_csv(ticker: str):
     """Initialize option trades CSV with comprehensive columns"""
@@ -143,6 +145,50 @@ def log_option_trade(
                 notes,
             ]
         )
+
+
+def log_trade(
+    ticker: str,
+    action: str,
+    option_type: str,
+    strike: float,
+    expiry: str,
+    price: float,
+    delta: float = 0.0,
+    pnl: float = 0.0,
+    cumulative_pnl: float = 0.0,
+    notes: str = "",
+):
+    """Log trade to CSV and send Telegram notification"""
+    trades_file = Path(f"output/trades_{ticker}.csv")
+    with trades_file.open("a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                datetime.datetime.now().isoformat(),
+                action,
+                option_type,
+                ticker,
+                strike,
+                expiry,
+                price,
+                delta,
+                pnl,
+                cumulative_pnl,
+                notes,
+            ]
+        )
+
+    # Send to Telegram
+    alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
+    tg.send_trade_alert(
+        f"{action} {option_type}",
+        ticker,
+        strike,
+        expiry,
+        price,
+        **alert_params,
+    )
 
 
 def get_last_option_trade(ticker: str) -> dict[str, str] | None:
