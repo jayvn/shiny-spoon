@@ -108,7 +108,6 @@ def init_csv(ticker: str):
             )
 
 
-
 def get_option_delta(ib: IB, option: Contract) -> float:
     """Get current delta for an option"""
     tickers = ib.reqTickers(option)
@@ -534,7 +533,7 @@ def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState) -> None:
         print(f"Closed LEAPS @ ${exit_price:.2f}")
         print(f"LEAPS P&L: ${pnl:.2f}")
 
-        log_trade(
+        option_trades.log_trade(
             ticker,
             "SELL_TO_CLOSE",
             "LEAPS",
