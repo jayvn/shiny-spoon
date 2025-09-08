@@ -6,7 +6,8 @@ Option trades logging with comprehensive option data
 import csv
 import datetime
 from pathlib import Path
-from typing import Optional
+
+from ib_async import IB, Option
 
 
 def init_option_trades_csv(ticker: str):
@@ -46,9 +47,9 @@ def init_option_trades_csv(ticker: str):
 
 
 def log_option_trade(
-    ib,
+    ib: IB,
     action: str,
-    option_contract,
+    option_contract: Option,
     trade_price: float,
     option_type: str = "",
     quantity: int = 1,
@@ -74,7 +75,10 @@ def log_option_trade(
         gamma = greeks.gamma or 0.0
         theta = greeks.theta or 0.0
         vega = greeks.vega or 0.0
-        implied_volatility = greeks.impliedVolatility or 0.0
+        implied_volatility = (
+            getattr(greeks, "impliedVol", getattr(greeks, "impliedVolatility", 0.0))
+            or 0.0
+        )
 
     # Get underlying price
     stock = Stock(ticker, "SMART", "USD")
@@ -141,7 +145,7 @@ def log_option_trade(
         )
 
 
-def get_last_option_trade(ticker: str) -> Optional[dict]:
+def get_last_option_trade(ticker: str) -> dict[str, str] | None:
     """Get the last option trade from CSV as a dictionary"""
     trades_file = Path(f"output/option_trades_{ticker}.csv")
     if not trades_file.exists():
@@ -156,7 +160,7 @@ def get_last_option_trade(ticker: str) -> Optional[dict]:
     return last if last else None
 
 
-def get_option_trades_summary(ticker: str) -> dict:
+def get_option_trades_summary(ticker: str) -> dict[str, int | float | dict[str, int]]:
     """Get summary statistics from option trades"""
     trades_file = Path(f"output/option_trades_{ticker}.csv")
     if not trades_file.exists():
