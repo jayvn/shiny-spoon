@@ -159,26 +159,7 @@ def log_trade(
     cumulative_pnl: float = 0.0,
     notes: str = "",
 ):
-    """Log trade to CSV and send Telegram notification"""
-    trades_file = Path(f"output/trades_{ticker}.csv")
-    with trades_file.open("a", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                datetime.datetime.now().isoformat(),
-                action,
-                option_type,
-                ticker,
-                strike,
-                expiry,
-                price,
-                delta,
-                pnl,
-                cumulative_pnl,
-                notes,
-            ]
-        )
-
+    """Send Telegram notification for trade"""
     # Send to Telegram
     alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
     tg.send_trade_alert(

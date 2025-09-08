@@ -291,7 +291,7 @@ def buy_leaps(ib: IB, ticker: str, state: PMCCState) -> bool:
         f"Stop loss at: ${state.leaps_original_cost * (1 - LEAPS_STOP_LOSS_PERCENTAGE / 100):.2f}"
     )
 
-    log_trade(
+    option_trades.log_trade(
         ticker,
         "BUY",
         "LEAPS",
@@ -348,7 +348,7 @@ def sell_short_call(ib: IB, ticker: str, state: PMCCState) -> bool:
     )
     print(f"Premium: ${fill_price:.2f} Delta: {delta:.3f}")
 
-    log_trade(
+    option_trades.log_trade(
         ticker,
         "SELL",
         "SHORT",
@@ -401,7 +401,7 @@ def close_short_call(ib: IB, ticker: str, state: PMCCState, reason: str) -> bool
     print(f"Closed short call @ ${exit_price:.2f}")
     print(f"P&L on trade: ${pnl:.2f}")
 
-    log_trade(
+    option_trades.log_trade(
         ticker,
         "BUY_TO_CLOSE",
         "SHORT",
