@@ -14,7 +14,7 @@ from ib_async import IB, MarketOrder, Option, Stock
 
 # Configuration
 PORT = 4002
-CLIENT_ID = 0
+CLIENT_ID = 0  # Using 0 allows auto-incrementing if connection exists
 TICKER = "SPY"
 DTE_DAYS = 1
 
@@ -56,9 +56,9 @@ def last_trade(ticker: str):
         "timestamp": last[0],
         "action": last[1],
         "ticker": last[2],
-        "strike": float(last[3]),
-        "expiry": last[4],
-        "price": float(last[5]),
+        "strike": float(last[3]) if last[3] else 0.0,
+        "expiry": str(last[4]) if last[4] else "",
+        "price": float(last[5]) if last[5] else 0.0,
         "pnl": float(last[6]) if last[6] else 0.0,
     }
 
@@ -71,6 +71,11 @@ def get_atm_option(ib: IB, ticker: str, dte_days: int, right: str = "C") -> Opti
     tickers = ib.reqTickers(stock)
     current_price = tickers[0].marketPrice()
     strike = round(current_price)
+
+    # Cancel market data subscription to avoid lingering connections
+    for ticker_obj in tickers:
+        if ticker_obj.contract:
+            ib.cancelMktData(ticker_obj.contract)
 
     target_date = datetime.date.today() + datetime.timedelta(days=dte_days)
     chains = ib.reqSecDefOptParams(stock.symbol, "", stock.secType, stock.conId)
@@ -85,7 +90,10 @@ def get_atm_option(ib: IB, ticker: str, dte_days: int, right: str = "C") -> Opti
     )
 
     option = Option(ticker, closest_expiry, strike, right, "SMART")
-    return ib.qualifyContracts(option)[0]
+    qualified = ib.qualifyContracts(option)
+    if qualified and isinstance(qualified[0], Option):
+        return qualified[0]
+    raise ValueError(f"Failed to qualify option contract for {ticker}")
 
 
 def buy_option(ib: IB, ticker: str, dte_days: int) -> bool:
@@ -167,13 +175,20 @@ def display_position(ib: IB, ticker: str):
         print(f"Entry Price: ${last['price']:.2f}")
         print(f"Entry Time: {last['timestamp']}")
         print(f"Expiry: {last['expiry']}")
-        option = Option(ticker, last["expiry"], last["strike"], "C", "SMART")
+        option = Option(
+            ticker, str(last["expiry"]), float(last["strike"]), "C", "SMART"
+        )
         contract = ib.qualifyContracts(option)[0]
         tickers = ib.reqTickers(contract)
         current_price = tickers[0].marketPrice()
-        pnl = (current_price - last["price"]) * 100
+        pnl = (current_price - float(last["price"])) * 100
         print(f"Current Price: ${current_price:.2f}")
         print(f"Unrealized P&L: ${pnl:.2f}")
+
+        # Cancel market data subscription
+        for ticker_obj in tickers:
+            if ticker_obj.contract:
+                ib.cancelMktData(ticker_obj.contract)
     else:
         print("No active position")
 
@@ -187,7 +202,9 @@ def run_daily(ib: IB, ticker: str, dte_days: int):
     last = last_trade(ticker)
     if last and last["action"] == "BUY":
         print("Have position - selling")
-        sell_option(ib, ticker, last["strike"], last["expiry"], last["price"])
+        sell_option(
+            ib, ticker, float(last["strike"]), str(last["expiry"]), float(last["price"])
+        )
     else:
         print("No position - buying")
         buy_option(ib, ticker, dte_days)
@@ -199,15 +216,23 @@ def main():
     """Main entry point - connect to IB and run strategy"""
     ib = IB()
 
-    print(f"Connecting to IB on port {PORT}...")
-    ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
-    print("Connected")
+    try:
+        print(f"Connecting to IB on port {PORT}...")
+        ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
+        print("Connected")
 
-    init_csv(TICKER)
-    run_daily(ib, TICKER, DTE_DAYS)
+        init_csv(TICKER)
+        run_daily(ib, TICKER, DTE_DAYS)
 
-    ib.disconnect()
-    print("Disconnected from IB")
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    finally:
+        # Always disconnect properly
+        if ib.isConnected():
+            ib.disconnect()
+            print("Disconnected from IB")
+
     return 0
 
 
