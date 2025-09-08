@@ -73,6 +73,22 @@ def send_trade_alert(
     return send_message(message)
 
 
+def format_trade_alert_params(delta: float = 0.0, pnl: float = 0.0, cumulative_pnl: float = 0.0, notes: str = ""):
+    """Format parameters for trade alert - returns dict for **kwargs"""
+    params = {}
+    
+    if delta != 0.0:
+        params["delta"] = f"{delta:.3f}"
+    if pnl != 0.0:
+        params["pnl"] = f"${pnl:.2f}"
+    if cumulative_pnl != 0.0:
+        params["total_pnl"] = f"${cumulative_pnl:.2f}"
+    if notes:
+        params["notes"] = notes
+        
+    return params
+
+
 def send_stop_loss_alert(ticker: str, reason: str, loss_amount: float):
     """Send urgent stop loss alert"""
     message = f"🚨 *STOP LOSS TRIGGERED - {ticker}* 🚨\n\n"

@@ -140,16 +140,14 @@ def log_trade(
         )
 
     # Send to Telegram
+    alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
     tg.send_trade_alert(
         f"{action} {option_type}",
         ticker,
         strike,
         expiry,
         price,
-        delta=f"{delta:.3f}" if delta else None,
-        pnl=f"${pnl:.2f}" if pnl != 0 else None,
-        total_pnl=f"${cumulative_pnl:.2f}" if cumulative_pnl != 0 else None,
-        notes=notes if notes else None,
+        **alert_params,
     )
 
 
