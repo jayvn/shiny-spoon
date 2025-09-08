@@ -1,0 +1,13 @@
+{
+  "leaps_strike": 620.0,
+  "leaps_expiry": "20260918",
+  "leaps_original_cost": 7459.999999999999,
+  "leaps_high_water_mark": 7459.999999999999,
+  "position_opened_date": "2025-09-08T17:20:18.045786",
+  "stop_loss_triggered": false,
+  "short_strike": null,
+  "short_expiry": null,
+  "short_original_premium": null,
+  "total_short_premium_collected": 0.0,
+  "realized_pnl": 0.0
+}

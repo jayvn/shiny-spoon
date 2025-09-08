@@ -15,6 +15,8 @@ from typing import Optional
 
 from ib_async import IB, MarketOrder, Option, Stock
 
+import telegram_bot as tg
+
 # Configuration
 PORT = 4002
 CLIENT_ID = 0
@@ -117,7 +119,7 @@ def log_trade(
     cumulative_pnl: float = 0.0,
     notes: str = "",
 ):
-    """Log trade to CSV"""
+    """Log trade to CSV and send Telegram notification"""
     trades_file = Path(f"output/trades_{ticker}.csv")
     with trades_file.open("a", newline="") as f:
         writer = csv.writer(f)
@@ -136,6 +138,19 @@ def log_trade(
                 notes,
             ]
         )
+
+    # Send to Telegram
+    tg.send_trade_alert(
+        f"{action} {option_type}",
+        ticker,
+        strike,
+        expiry,
+        price,
+        delta=f"{delta:.3f}" if delta else None,
+        pnl=f"${pnl:.2f}" if pnl != 0 else None,
+        total_pnl=f"${cumulative_pnl:.2f}" if cumulative_pnl != 0 else None,
+        notes=notes if notes else None,
+    )
 
 
 def get_option_delta(ib: IB, option) -> float:
@@ -493,6 +508,7 @@ def check_leaps_stop_loss(ib: IB, ticker: str, state: PMCCState) -> bool:
 
     if stop_hit:
         print(f"STOP LOSS TRIGGERED: {reason}")
+        tg.send_stop_loss_alert(ticker, reason, leaps_loss)
         liquidate_all_positions(ib, ticker, state)
         return True
 
