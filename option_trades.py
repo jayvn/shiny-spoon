@@ -163,20 +163,24 @@ def log_option_trade(
         )
 
 
-
 def get_last_option_trade(ticker: str) -> dict[str, str] | None:
     """Get the last option trade from CSV as a dictionary"""
     trades_file = Path(f"output/option_trades_{ticker}.csv")
     if not trades_file.exists():
         return None
 
-    last = None
     with trades_file.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            last = row
+        lines = f.readlines()
+        if len(lines) <= 1:  # Only header or empty
+            return None
 
-    return last if last else None
+        # Get header and last line
+        header = lines[0].strip()
+        last_line = lines[-1].strip()
+
+        # Parse as CSV
+        reader = csv.DictReader([header, last_line])
+        return next(reader)
 
 
 def get_option_trades_summary(ticker: str) -> dict[str, int | float | dict[str, int]]:

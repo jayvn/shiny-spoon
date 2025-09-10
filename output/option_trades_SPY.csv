@@ -1,1 +1,2 @@
 timestamp,action,option_type,ticker,strike,expiry,right,price,quantity,delta,gamma,theta,vega,implied_volatility,time_to_expiry_days,underlying_price,intrinsic_value,time_value,pnl,cumulative_pnl,commission,contract_symbol,notes
+2025-09-10T17:43:29.838062,BUY_TO_CLOSE,SHORT_CALL,SPY,661.0,20251010,C,4.92,1,0.3679,0.0191,-0.2184,0.6984,0.1058,30,653.18,0,4.92,-102.0,-102.0,0.0,SPY 20251010 661.0C,Stop loss on short

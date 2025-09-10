@@ -13,28 +13,10 @@ import requests
 CONFIG = None
 
 
-def load_config(config_file: str = "telegram_config.json"):
-    """Load config from JSON file"""
-    global CONFIG
-    config_path = Path(config_file)
+config_path = Path(config_file)
 
-    if not config_path.exists():
-        logging.warning(f"Config file not found: {config_file}")
-        return False
-
-    try:
-        with config_path.open("r") as f:
-            data = json.load(f)
-
-        if not data.get("bot_token") or not data.get("chat_id"):
-            logging.warning("Missing bot_token or chat_id in config")
-            return False
-
-        CONFIG = data
-        return True
-    except Exception as e:
-        logging.error(f"Error loading config: {e}")
-        return False
+with config_path.open("r") as f:
+    CONFIG = json.load(f)
 
 
 def send_message(message: str, parse_mode: str = "Markdown") -> bool:
@@ -45,7 +27,9 @@ def send_message(message: str, parse_mode: str = "Markdown") -> bool:
 
     url = f"https://api.telegram.org/bot{CONFIG['bot_token']}/sendMessage"
 
-    payload = {"chat_id": CONFIG["chat_id"], "text": message, "parse_mode": parse_mode}
+    payload = {"chat_id": CONFIG["chat_id"], "text": message}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
 
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -53,6 +37,16 @@ def send_message(message: str, parse_mode: str = "Markdown") -> bool:
         return True
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to send Telegram message: {e}")
+        # Try again without markdown formatting if it fails
+        if parse_mode in ["Markdown", "MarkdownV2"]:
+            payload["parse_mode"] = None
+            try:
+                response = requests.post(url, json=payload, timeout=10)
+                response.raise_for_status()
+                logging.info("Sent message without markdown formatting")
+                return True
+            except:
+                pass
         return False
 
 
@@ -60,17 +54,31 @@ def send_trade_alert(
     action: str, ticker: str, strike: float, expiry: str, price: float, **kwargs
 ):
     """Send formatted trade alert"""
-    message = f"🔔 *Trade Alert - {ticker}*\n\n"
-    message += f"*Action:* {action}\n"
-    message += f"*Strike:* ${strike}\n"
-    message += f"*Expiry:* {expiry}\n"
-    message += f"*Price:* ${price:.2f}\n"
+    # Use emojis and plain text
+    message = f"🔔 Trade Alert - {ticker} 📊\n"
+    message += "━━━━━━━━━━━━━━━━━━\n"
+    message += f"📌 Action: {action}\n"
+    message += f"💵 Strike: ${strike}\n"
+    message += f"📅 Expiry: {expiry}\n"
+    message += f"💰 Price: ${price:.2f}\n"
 
     for key, value in kwargs.items():
         if value is not None:  # Skip None values
-            message += f"*{key.replace('_', ' ').title()}:* {value}\n"
+            key_formatted = key.replace("_", " ").title()
+            # Add emojis for specific fields
+            if "delta" in key.lower():
+                message += f"📐 {key_formatted}: {value}\n"
+            elif "pnl" in key.lower() or "profit" in key.lower():
+                message += f"💸 {key_formatted}: {value}\n"
+            elif "notes" in key.lower():
+                message += f"📝 {key_formatted}: {value}\n"
+            else:
+                message += f"▫️ {key_formatted}: {value}\n"
 
-    return send_message(message)
+    message += "━━━━━━━━━━━━━━━━━━"
+
+    # Send without markdown parsing
+    return send_message(message, parse_mode=None)
 
 
 def format_trade_alert_params(
@@ -93,12 +101,15 @@ def format_trade_alert_params(
 
 def send_stop_loss_alert(ticker: str, reason: str, loss_amount: float):
     """Send urgent stop loss alert"""
-    message = f"🚨 *STOP LOSS TRIGGERED - {ticker}* 🚨\n\n"
-    message += f"*Reason:* {reason}\n"
-    message += f"*Loss Amount:* ${loss_amount:.2f}\n"
-    message += "\n⚠️ All positions being liquidated"
+    message = "🚨🚨🚨 STOP LOSS TRIGGERED 🚨🚨🚨\n"
+    message += "━━━━━━━━━━━━━━━━━━\n"
+    message += f"📊 Ticker: {ticker}\n"
+    message += f"⚠️ Reason: {reason}\n"
+    message += f"💔 Loss Amount: ${loss_amount:.2f}\n"
+    message += "━━━━━━━━━━━━━━━━━━\n"
+    message += "🔴 All positions being liquidated"
 
-    return send_message(message)
+    return send_message(message, parse_mode=None)
 
 
 def send_position_update(
@@ -118,10 +129,6 @@ def send_error(error_msg: str):
     """Send error notification"""
     message = f"❌ *Error*\n\n{error_msg}"
     return send_message(message)
-
-
-# Initialize on import
-load_config()
 
 
 # Test function
