@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ib_async import IB, MarketOrder, Option, Stock
 
-import option_trades
+import log_n_notify
 
 # Configuration
 PORT = 4002
@@ -43,7 +43,7 @@ def init_csv(ticker: str):
 
 def last_trade(ticker: str):
     """Return last trade row as dict or None"""
-    return option_trades.get_last_option_trade(ticker)
+    return log_n_notify.get_last_option_trade(ticker)
 
 
 def get_atm_option(ib: IB, ticker: str, dte_days: int, right: str = "C") -> Option:
@@ -92,7 +92,7 @@ def buy_option(ib: IB, ticker: str, dte_days: int) -> bool:
     print(f"Bought {ticker} {option.strike} Call @ ${fill_price:.2f}")
 
     # Log to comprehensive option trades CSV
-    option_trades.log_option_trade(
+    log_n_notify.log_option_trade(
         ib=ib,
         action="BUY",
         option_contract=option,
@@ -124,7 +124,7 @@ def sell_option(
     print(f"P&L: ${pnl:.2f}")
 
     # Log to comprehensive option trades CSV
-    option_trades.log_option_trade(
+    log_n_notify.log_option_trade(
         ib=ib,
         action="SELL",
         option_contract=contract,
@@ -196,7 +196,7 @@ def main():
         print("Connected")
 
         init_csv(TICKER)
-        option_trades.init_option_trades_csv(TICKER)
+        log_n_notify.init_option_trades_csv(TICKER)
         run_daily(ib, TICKER, DTE_DAYS)
 
     except Exception as e:

@@ -15,7 +15,7 @@ from typing import Optional
 
 from ib_async import IB, Contract, LimitOrder, MarketOrder, Option, Stock
 
-import option_trades
+import log_n_notify
 import telegram_bot as tg
 
 # Configuration
@@ -216,9 +216,10 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float) -> Option | None
         key=lambda x: abs(datetime.datetime.strptime(x, "%Y%m%d").date() - target_date),
     )
 
-    # Filter strikes above LEAPS strike but below 110% of current price
-    min_strike = max(int(leaps_strike) + 1, int(current_price * 0.95))
-    max_strike = int(current_price * 1.15)
+    # Filter strikes - focus on OTM strikes likely to have delta near target
+    # For 0.30 delta, strikes are typically 2-5% OTM
+    min_strike = max(int(leaps_strike) + 1, int(current_price * 1.01))
+    max_strike = int(current_price * 1.08)
     test_strikes = sorted(
         [int(s) for s in all_strikes if min_strike <= s <= max_strike]
     )
@@ -231,26 +232,35 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float) -> Option | None
         f"Testing {len(test_strikes)} strikes for short call (exp {closest_expiry})..."
     )
 
-    best_option = None
-    best_delta_diff = float("inf")
-
+    # Batch qualify all contracts first
+    option_contracts = []
     for strike in test_strikes:
         option = Option(ticker, closest_expiry, strike, "C", "SMART")
         try:
             contract = ib.qualifyContracts(option)[0]
-            delta = get_option_delta(ib, contract)
-
-            if delta == 0:  # Skip if no delta available
-                continue
-
+            option_contracts.append(contract)
+        except Exception:
+            continue
+    
+    if not option_contracts:
+        print("No contracts could be qualified")
+        return None
+    
+    # Request tickers for all contracts at once (much faster)
+    print(f"Requesting data for {len(option_contracts)} options...")
+    all_tickers = ib.reqTickers(*option_contracts)
+    
+    best_option = None
+    best_delta_diff = float("inf")
+    
+    for ticker_data, contract in zip(all_tickers, option_contracts):
+        if ticker_data.modelGreeks and ticker_data.modelGreeks.delta:
+            delta = ticker_data.modelGreeks.delta
             delta_diff = abs(delta - SHORT_DELTA_TARGET)
-
+            
             if delta <= SHORT_DELTA_TARGET + 0.15 and delta_diff < best_delta_diff:
                 best_option = contract
                 best_delta_diff = delta_diff
-
-        except Exception:
-            continue
 
     if best_option:
         delta = get_option_delta(ib, best_option)
@@ -305,7 +315,7 @@ def buy_leaps(ib: IB, ticker: str, state: PMCCState, use_limit: bool = False) ->
     )
 
     # Log option trade with comprehensive data and Telegram notification
-    option_trades.log_option_trade(
+    log_n_notify.log_option_trade(
         ib=ib,
         action="BUY",
         option_contract=option,
@@ -351,7 +361,7 @@ def sell_short_call(ib: IB, ticker: str, state: PMCCState) -> bool:
     print(f"Premium: ${fill_price:.2f} Delta: {delta:.3f}")
 
     # Log option trade with comprehensive data and Telegram notification
-    option_trades.log_option_trade(
+    log_n_notify.log_option_trade(
         ib=ib,
         action="SELL",
         option_contract=option,
@@ -393,7 +403,7 @@ def close_short_call(ib: IB, ticker: str, state: PMCCState, reason: str) -> bool
     print(f"P&L on trade: ${pnl:.2f}")
 
     # Log option trade with comprehensive data and Telegram notification
-    option_trades.log_option_trade(
+    log_n_notify.log_option_trade(
         ib=ib,
         action="BUY_TO_CLOSE",
         option_contract=contract,
@@ -513,7 +523,7 @@ def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState) -> None:
         print(f"LEAPS P&L: ${pnl:.2f}")
 
         # Log option trade with comprehensive data and Telegram notification
-        option_trades.log_option_trade(
+        log_n_notify.log_option_trade(
             ib=ib,
             action="SELL_TO_CLOSE",
             option_contract=contract,
@@ -685,7 +695,7 @@ def main():
     print("Connected")
 
     init_csv(TICKER)
-    option_trades.init_option_trades_csv(TICKER)
+    log_n_notify.init_option_trades_csv(TICKER)
     run_daily(ib, TICKER)
 
     ib.disconnect()

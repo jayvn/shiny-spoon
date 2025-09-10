@@ -2,7 +2,7 @@
   "leaps_strike": 620.0,
   "leaps_expiry": "20260918",
   "leaps_original_cost": 7459.999999999999,
-  "leaps_high_water_mark": 7754.499999999999,
+  "leaps_high_water_mark": 7788.0,
   "position_opened_date": "2025-09-08T17:20:18.045786",
   "stop_loss_triggered": false,
   "short_strike": null,

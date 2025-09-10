@@ -13,9 +13,7 @@ import requests
 CONFIG = None
 
 
-config_path = Path(config_file)
-
-with config_path.open("r") as f:
+with Path("telegram_config.json").open("r") as f:
     CONFIG = json.load(f)
 
 
