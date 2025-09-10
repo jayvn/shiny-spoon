@@ -35,17 +35,6 @@ def send_message(message: str, parse_mode: str = "Markdown") -> bool:
         return True
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to send Telegram message: {e}")
-        # Try again without markdown formatting if it fails
-        if parse_mode in ["Markdown", "MarkdownV2"]:
-            payload["parse_mode"] = None
-            try:
-                response = requests.post(url, json=payload, timeout=10)
-                response.raise_for_status()
-                logging.info("Sent message without markdown formatting")
-                return True
-            except:
-                pass
-        return False
 
 
 def send_trade_alert(
