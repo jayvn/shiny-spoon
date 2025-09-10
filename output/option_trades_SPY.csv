@@ -1,0 +1,1 @@
+timestamp,action,option_type,ticker,strike,expiry,right,price,quantity,delta,gamma,theta,vega,implied_volatility,time_to_expiry_days,underlying_price,intrinsic_value,time_value,pnl,cumulative_pnl,commission,contract_symbol,notes
