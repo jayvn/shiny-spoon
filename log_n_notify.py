@@ -153,14 +153,13 @@ def log_option_trade(
 
     # Send Telegram notification if enabled
     if SEND_TELEGRAM_NOTIFICATIONS:
-        alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
         tg.send_trade_alert(
             f"{action} {option_type}",
             ticker,
             strike,
             expiry,
             trade_price,
-            **alert_params,
+            **tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes),
         )
 
 
@@ -191,18 +190,16 @@ def get_option_trades_summary(ticker: str) -> dict[str, int | float | dict[str, 
         return {}
 
     df = pd.read_csv(trades_file)
-    
+
     if df.empty:
         return {}
-    
-    total_pnl = df["pnl"].sum()
-    total_commission = df["commission"].sum()
+
     trades_by_type = df["option_type"].value_counts().to_dict()
 
     return {
         "total_trades": len(df),
-        "total_pnl": total_pnl,
-        "total_commission": total_commission,
+        "total_pnl": df["pnl"].sum(),
+        "total_commission": df["commission"].sum(),
         "trades_by_type": trades_by_type,
         "net_pnl": total_pnl - total_commission,
     }

@@ -61,40 +61,13 @@ def send_trade_alert(
     message += f"💰 Price: ${price:.2f}\n"
 
     for key, value in kwargs.items():
-        if value is not None:  # Skip None values
-            key_formatted = key.replace("_", " ").title()
-            # Add emojis for specific fields
-            if "delta" in key.lower():
-                message += f"📐 {key_formatted}: {value}\n"
-            elif "pnl" in key.lower() or "profit" in key.lower():
-                message += f"💸 {key_formatted}: {value}\n"
-            elif "notes" in key.lower():
-                message += f"📝 {key_formatted}: {value}\n"
-            else:
-                message += f"▫️ {key_formatted}: {value}\n"
+        value = f"{value:.2f}"
+        message += f"📐 {key}: {value}\n"
 
     message += "━━━━━━━━━━━━━━━━━━"
 
     # Send without markdown parsing
     return send_message(message, parse_mode=None)
-
-
-def format_trade_alert_params(
-    delta: float = 0.0, pnl: float = 0.0, cumulative_pnl: float = 0.0, notes: str = ""
-):
-    """Format parameters for trade alert - returns dict for **kwargs"""
-    params = {}
-
-    if delta != 0.0:
-        params["delta"] = f"{delta:.3f}"
-    if pnl != 0.0:
-        params["pnl"] = f"${pnl:.2f}"
-    if cumulative_pnl != 0.0:
-        params["total_pnl"] = f"${cumulative_pnl:.2f}"
-    if notes:
-        params["notes"] = notes
-
-    return params
 
 
 def send_stop_loss_alert(ticker: str, reason: str, loss_amount: float):
