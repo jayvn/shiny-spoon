@@ -7,6 +7,7 @@ import csv
 import datetime
 from pathlib import Path
 
+import pandas as pd
 from ib_async import IB, Option
 
 import telegram_bot as tg
@@ -189,26 +190,17 @@ def get_option_trades_summary(ticker: str) -> dict[str, int | float | dict[str, 
     if not trades_file.exists():
         return {}
 
-    total_trades = 0
-    total_pnl = 0.0
-    total_commission = 0.0
-    trades_by_type = {}
-
-    with trades_file.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            total_trades += 1
-            total_pnl += float(row.get("pnl", 0))
-            total_commission += float(row.get("commission", 0))
-
-            option_type = row.get("option_type", "")
-            if option_type in trades_by_type:
-                trades_by_type[option_type] += 1
-            else:
-                trades_by_type[option_type] = 1
+    df = pd.read_csv(trades_file)
+    
+    if df.empty:
+        return {}
+    
+    total_pnl = df["pnl"].sum()
+    total_commission = df["commission"].sum()
+    trades_by_type = df["option_type"].value_counts().to_dict()
 
     return {
-        "total_trades": total_trades,
+        "total_trades": len(df),
         "total_pnl": total_pnl,
         "total_commission": total_commission,
         "trades_by_type": trades_by_type,
