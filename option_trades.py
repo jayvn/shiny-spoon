@@ -11,6 +11,9 @@ from ib_async import IB, Option
 
 import telegram_bot as tg
 
+# Global configuration
+SEND_TELEGRAM_NOTIFICATIONS = True
+
 
 def init_option_trades_csv(ticker: str):
     """Initialize option trades CSV with comprehensive columns"""
@@ -60,7 +63,7 @@ def log_option_trade(
     commission: float = 0.0,
     notes: str = "",
 ):
-    """Log comprehensive option trade data from ib_async objects"""
+    """Log comprehensive option trade data from ib_async objects and send Telegram notification"""
     from ib_async import Stock
 
     ticker = option_contract.symbol
@@ -116,6 +119,7 @@ def log_option_trade(
     # Generate contract symbol
     contract_symbol = f"{ticker} {expiry} {strike}{right}"
 
+    # Write to CSV
     with trades_file.open("a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
@@ -146,30 +150,18 @@ def log_option_trade(
             ]
         )
 
+    # Send Telegram notification if enabled
+    if SEND_TELEGRAM_NOTIFICATIONS:
+        alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
+        tg.send_trade_alert(
+            f"{action} {option_type}",
+            ticker,
+            strike,
+            expiry,
+            trade_price,
+            **alert_params,
+        )
 
-def log_trade(
-    ticker: str,
-    action: str,
-    option_type: str,
-    strike: float,
-    expiry: str,
-    price: float,
-    delta: float = 0.0,
-    pnl: float = 0.0,
-    cumulative_pnl: float = 0.0,
-    notes: str = "",
-):
-    """Send Telegram notification for trade"""
-    # Send to Telegram
-    alert_params = tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes)
-    tg.send_trade_alert(
-        f"{action} {option_type}",
-        ticker,
-        strike,
-        expiry,
-        price,
-        **alert_params,
-    )
 
 
 def get_last_option_trade(ticker: str) -> dict[str, str] | None:

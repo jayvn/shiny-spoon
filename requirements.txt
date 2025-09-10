@@ -2,4 +2,5 @@ ib_async
 matplotlib
 numpy
 pandas
+pytz
 requests

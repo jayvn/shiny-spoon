@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-from ib_async import IB, MarketOrder, Option, Stock, Contract
+from ib_async import IB, MarketOrder, LimitOrder, Option, Stock, Contract
 
 import option_trades
 import telegram_bot as tg
@@ -259,14 +259,28 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float) -> Option | None
     return best_option
 
 
-def buy_leaps(ib: IB, ticker: str, state: PMCCState) -> bool:
+def buy_leaps(ib: IB, ticker: str, state: PMCCState, use_limit: bool = False) -> bool:
     """Buy LEAPS call option"""
     option = find_leaps_option(ib, ticker)
     if not option:
         print("No suitable LEAPS found")
         return False
 
-    order = MarketOrder("BUY", 1)
+    if use_limit:
+        # Get current bid/ask for limit order
+        tickers = ib.reqTickers(option)
+        if tickers and tickers[0].bid and tickers[0].ask:
+            mid_price = (tickers[0].bid + tickers[0].ask) / 2
+            # Place limit order slightly above mid
+            limit_price = round(mid_price * 1.005, 2)
+            print(f"Placing limit order at ${limit_price:.2f} (mid: ${mid_price:.2f})")
+            order = LimitOrder("BUY", 1, limit_price)
+        else:
+            print("Could not get bid/ask, using market order")
+            order = MarketOrder("BUY", 1)
+    else:
+        order = MarketOrder("BUY", 1)
+    
     trade = ib.placeOrder(option, order)
 
     while not trade.isDone():
@@ -290,26 +304,15 @@ def buy_leaps(ib: IB, ticker: str, state: PMCCState) -> bool:
         f"Stop loss at: ${state.leaps_original_cost * (1 - LEAPS_STOP_LOSS_PERCENTAGE / 100):.2f}"
     )
 
-    option_trades.log_trade(
-        ticker,
-        "BUY",
-        "LEAPS",
-        option.strike,
-        option.lastTradeDateOrContractMonth,
-        fill_price,
-        delta,
-        0,
-        state.realized_pnl,
-        "Initial LEAPS purchase",
-    )
-
-    # Also log to comprehensive option trades CSV
+    # Log option trade with comprehensive data and Telegram notification
     option_trades.log_option_trade(
         ib=ib,
         action="BUY",
         option_contract=option,
         trade_price=fill_price,
         option_type="LEAPS",
+        pnl=0,
+        cumulative_pnl=state.realized_pnl,
         notes="Initial LEAPS purchase",
     )
 
@@ -347,26 +350,15 @@ def sell_short_call(ib: IB, ticker: str, state: PMCCState) -> bool:
     )
     print(f"Premium: ${fill_price:.2f} Delta: {delta:.3f}")
 
-    option_trades.log_trade(
-        ticker,
-        "SELL",
-        "SHORT",
-        option.strike,
-        option.lastTradeDateOrContractMonth,
-        fill_price,
-        delta,
-        0,
-        state.realized_pnl,
-        "Sold short call",
-    )
-
-    # Also log to comprehensive option trades CSV
+    # Log option trade with comprehensive data and Telegram notification
     option_trades.log_option_trade(
         ib=ib,
         action="SELL",
         option_contract=option,
         trade_price=fill_price,
         option_type="SHORT_CALL",
+        pnl=0,
+        cumulative_pnl=state.realized_pnl,
         notes="Sold short call against LEAPS",
     )
 
@@ -400,20 +392,7 @@ def close_short_call(ib: IB, ticker: str, state: PMCCState, reason: str) -> bool
     print(f"Closed short call @ ${exit_price:.2f}")
     print(f"P&L on trade: ${pnl:.2f}")
 
-    option_trades.log_trade(
-        ticker,
-        "BUY_TO_CLOSE",
-        "SHORT",
-        state.short_strike,
-        state.short_expiry,
-        exit_price,
-        0,
-        pnl,
-        state.realized_pnl,
-        reason,
-    )
-
-    # Also log to comprehensive option trades CSV
+    # Log option trade with comprehensive data and Telegram notification
     option_trades.log_option_trade(
         ib=ib,
         action="BUY_TO_CLOSE",
@@ -533,17 +512,16 @@ def liquidate_all_positions(ib: IB, ticker: str, state: PMCCState) -> None:
         print(f"Closed LEAPS @ ${exit_price:.2f}")
         print(f"LEAPS P&L: ${pnl:.2f}")
 
-        option_trades.log_trade(
-            ticker,
-            "SELL_TO_CLOSE",
-            "LEAPS",
-            state.leaps_strike,
-            state.leaps_expiry,
-            exit_price,
-            0,
-            pnl,
-            state.realized_pnl,
-            "STOP LOSS TRIGGERED",
+        # Log option trade with comprehensive data and Telegram notification
+        option_trades.log_option_trade(
+            ib=ib,
+            action="SELL_TO_CLOSE",
+            option_contract=contract,
+            trade_price=exit_price,
+            option_type="LEAPS",
+            pnl=pnl,
+            cumulative_pnl=state.realized_pnl,
+            notes="STOP LOSS TRIGGERED",
         )
 
     state.stop_loss_triggered = True
@@ -630,11 +608,50 @@ def display_position_status(ib: IB, ticker: str, state: PMCCState) -> None:
     print("=" * 60 + "\n")
 
 
+def is_market_open(ib: IB) -> bool:
+    """Check if US market is open"""
+    import pytz
+    from datetime import datetime
+    
+    my_timezone = pytz.timezone("Europe/Berlin")
+    eastern = pytz.timezone("US/Eastern")
+    
+    # Get current time in Eastern timezone
+    now_eastern = datetime.now(eastern)
+    
+    # Check if it's a weekday
+    if now_eastern.weekday() >= 5:  # Saturday = 5, Sunday = 6
+        return False
+    
+    # Market hours: 9:30 AM - 4:00 PM ET
+    market_open = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
+    
+    return market_open <= now_eastern <= market_close
+
+
 def run_daily(ib: IB, ticker: str) -> None:
     """Run daily PMCC management"""
     print(f"=== Daily PMCC Management for {ticker} ===")
 
     state = load_state(ticker)
+    
+    # Check if market is open
+    if not is_market_open(ib):
+        print("Market is closed - placing limit order and exiting")
+        
+        # Only place order if we don't have LEAPS yet
+        if not state.leaps_strike and not state.stop_loss_triggered:
+            print("No LEAPS position - placing limit order for market open")
+            if buy_leaps(ib, ticker, state, use_limit=True):
+                print("Limit order placed successfully")
+            else:
+                print("Failed to place limit order")
+        else:
+            print("Already have LEAPS position - no action needed")
+        
+        print("Exiting as market is closed")
+        return
 
     # Check stop loss first
     if check_leaps_stop_loss(ib, ticker, state):
