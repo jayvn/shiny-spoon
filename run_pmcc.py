@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
-from ib_async import IB, MarketOrder, LimitOrder, Option, Stock, Contract
+from ib_async import IB, Contract, LimitOrder, MarketOrder, Option, Stock
 
 import option_trades
 import telegram_bot as tg
@@ -280,7 +280,7 @@ def buy_leaps(ib: IB, ticker: str, state: PMCCState, use_limit: bool = False) ->
             order = MarketOrder("BUY", 1)
     else:
         order = MarketOrder("BUY", 1)
-    
+
     trade = ib.placeOrder(option, order)
 
     while not trade.isDone():
@@ -610,23 +610,24 @@ def display_position_status(ib: IB, ticker: str, state: PMCCState) -> None:
 
 def is_market_open(ib: IB) -> bool:
     """Check if US market is open"""
-    import pytz
     from datetime import datetime
-    
+
+    import pytz
+
     my_timezone = pytz.timezone("Europe/Berlin")
     eastern = pytz.timezone("US/Eastern")
-    
+
     # Get current time in Eastern timezone
     now_eastern = datetime.now(eastern)
-    
+
     # Check if it's a weekday
     if now_eastern.weekday() >= 5:  # Saturday = 5, Sunday = 6
         return False
-    
+
     # Market hours: 9:30 AM - 4:00 PM ET
     market_open = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
     market_close = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
-    
+
     return market_open <= now_eastern <= market_close
 
 
@@ -635,11 +636,11 @@ def run_daily(ib: IB, ticker: str) -> None:
     print(f"=== Daily PMCC Management for {ticker} ===")
 
     state = load_state(ticker)
-    
+
     # Check if market is open
     if not is_market_open(ib):
         print("Market is closed - placing limit order and exiting")
-        
+
         # Only place order if we don't have LEAPS yet
         if not state.leaps_strike and not state.stop_loss_triggered:
             print("No LEAPS position - placing limit order for market open")
@@ -649,7 +650,7 @@ def run_daily(ib: IB, ticker: str) -> None:
                 print("Failed to place limit order")
         else:
             print("Already have LEAPS position - no action needed")
-        
+
         print("Exiting as market is closed")
         return
 
