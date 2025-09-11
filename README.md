@@ -1,94 +1,128 @@
-1% done
-# target implementation. 
-
 # Poor Man's Covered Call (PMCC) Strategy
 
-Automated implementation of the Poor Man's Covered Call options strategy using Interactive Brokers API.
+Automated options trading strategies for Interactive Brokers, featuring PMCC implementation with comprehensive logging, monitoring, and Telegram notifications.
 
 ## Overview
 
-PMCC is a cost-efficient alternative to traditional covered calls, using a long-term LEAPS call option instead of owning 100 shares of stock. The strategy generates income by selling short-term calls against the LEAPS position.
+This repository contains two main trading strategies:
+- **PMCC Strategy** (`run_pmcc.py`): Poor Man's Covered Call implementation using LEAPS as collateral
+- **Basic Options Strategy** (`run_basic.py`): Simple short call selling strategy for testing
 
 ## Features
 
-- **Automated LEAPS Selection**: Finds optimal 70+ delta LEAPS with 200+ DTE
-- **Smart Short Call Management**: Sells 15-delta calls with configurable expiry (daily/weekly)
-- **Risk Management**: 
-  - Loss limits (dollar and percentage based)
-  - Profit taking at 50% of max profit
-  - Delta-based rolling triggers
-- **Position Rolling**: Automatically rolls challenged positions when delta hits 0.35
-- **Liquidity Filters**: Ensures tradeable options with adequate volume and tight spreads
-- **State Persistence**: Saves and loads positions between sessions
+- **Automated Trading**: Fully automated option selection and execution
+- **Advanced Logging**: Comprehensive trade tracking with Greeks, IV, and market data
+- **Telegram Notifications**: Real-time alerts for trades and position updates
+- **P&L Visualization**: Interactive charts for performance analysis
+- **State Management**: Persistent position tracking across sessions
+- **Risk Controls**: Built-in stop-loss and profit-taking mechanisms
+
+## Project Structure
+
+```
+├── run_pmcc.py           # Main PMCC strategy execution
+├── run_basic.py          # Simple options strategy for testing
+├── option_trades.py      # Trade logging with Greeks and market data
+├── telegram_bot.py       # Telegram notification system
+├── plot_pnl.py          # P&L visualization and analysis
+├── requirements.txt      # Python dependencies
+├── CLAUDE.md            # Development guidelines
+└── Generated Files:
+    ├── state_<TICKER>.pkl       # Position state persistence
+    ├── trades_<TICKER>.csv      # Basic trade log
+    └── option_trades_<TICKER>.csv  # Detailed option trades log
+```
 
 ## Quick Start
 
-```python
-from ib_insync import IB
-from pmcc_strategy.pmcc_strategy import PMCCStrategy
-from pmcc_strategy.config import PMCCConfig
-
-# Connect to IB
-ib = IB()
-ib.connect('127.0.0.1', 7497, clientId=1)
-
-# Configure strategy
-config = PMCCConfig(
-    underlying_ticker="QQQ",
-    short_call_dte_target=7  # Weekly options
-)
-
-# Run strategy
-strategy = PMCCStrategy(ib, config)
-strategy.run()
+1. **Setup Environment**
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Configuration Parameters
+2. **Configure IB Gateway**
+- Ensure IB Gateway/TWS is running
+- Enable API access on `127.0.0.1:4002`
+- Paper trading account recommended for testing
 
-Key parameters in `config.py`:
+3. **Run PMCC Strategy**
+```bash
+python run_pmcc.py
+```
 
-- `leaps_delta_target`: Target delta for LEAPS (default: 0.70)
-- `short_call_delta_target`: Target delta for short calls (default: 0.15)
-- `roll_trigger_delta`: Roll when short call delta reaches this (default: 0.35)
-- `max_loss_threshold`: Maximum loss per contract (default: $200)
-- `profit_take_percentage`: Take profit at this percentage (default: 50%)
+4. **Run Basic Strategy (Testing)**
+```bash
+python run_basic.py
+```
 
-## Strategy Workflow
+## Configuration
 
-1. **Initial Setup**
-   - Buy LEAPS call with 70+ delta and 200+ DTE
-   - Sell first short call at 15 delta
+Edit strategy parameters at the top of each script:
+- `PORT`: IB Gateway port (default: 4002)
+- `TICKER`: Underlying symbol
+- `DTE_DAYS`: Days to expiration target
+- `QUANTITY`: Number of contracts
 
-2. **Daily Management**
-   - Check LEAPS health
-   - Monitor short call position
-   - Take action based on triggers:
-     - Close for profit (50% target)
-     - Close for loss (stop loss)
-     - Roll if challenged (delta > 0.35)
-     - Sell new call if none active
+## Trading Strategies
 
-3. **Position Rolling**
-   - Roll up and out when short delta exceeds threshold
-   - Maintain net credit or small debit ($25 max)
+### PMCC Strategy
+- Buys long-term LEAPS (70+ delta, 200+ DTE)
+- Sells short-term calls against LEAPS position
+- Automatic rolling when challenged
+- Profit target: 50% of max profit
+- Stop loss: Configurable dollar/percentage limits
 
-## Files
+### Basic Strategy
+- Simple short call selling
+- Used for testing infrastructure
+- Minimal risk management
 
-- `pmcc_strategy.py` - Main strategy execution
-- `config.py` - Configuration and state management
-- `option_selection.py` - Option scoring and selection
-- `short_call_manager.py` - Short call position management
-- `daily_manager.py` - Daily routine and metrics
+## Monitoring & Analysis
+
+### Trade Logging
+- `option_trades.py`: Captures comprehensive trade data including:
+  - Entry/exit prices and timestamps
+  - Greeks (Delta, Gamma, Theta, Vega)
+  - Implied volatility
+  - Market conditions at trade time
+
+### Telegram Notifications
+- Real-time trade alerts
+- Position updates
+- P&L notifications
+- Risk warnings
+
+### Performance Visualization
+```bash
+python plot_pnl.py
+```
+Generates interactive charts showing:
+- Cumulative P&L
+- Greeks evolution
+- Underlying price correlation
+- Trade distribution analysis
+
+## Development
+
+### Code Quality
+```bash
+ruff check .
+ruff format .
+basedpyright
+```
+
+### Testing
+Paper trading account strongly recommended for all testing.
 
 ## Risk Warnings
 
-- Options trading involves substantial risk
-- PMCC can result in losses exceeding initial investment
-- Requires active management and monitoring
-- Not suitable for all investors
+⚠️ **IMPORTANT**: This is for paper trading only. Options trading involves substantial risk including total loss of capital.
 
 ## Requirements
 
-- Interactive Brokers account with options trading
-- IB Gateway or TWS running
-- Python packages: ib_insync, pandas, datetime
+- Python 3.8+
+- Interactive Brokers account
+- IB Gateway or TWS
+- See `requirements.txt` for Python packages
