@@ -241,23 +241,23 @@ def find_short_option(ib: IB, ticker: str, leaps_strike: float) -> Option | None
             option_contracts.append(contract)
         except Exception:
             continue
-    
+
     if not option_contracts:
         print("No contracts could be qualified")
         return None
-    
+
     # Request tickers for all contracts at once (much faster)
     print(f"Requesting data for {len(option_contracts)} options...")
     all_tickers = ib.reqTickers(*option_contracts)
-    
+
     best_option = None
     best_delta_diff = float("inf")
-    
+
     for ticker_data, contract in zip(all_tickers, option_contracts):
         if ticker_data.modelGreeks and ticker_data.modelGreeks.delta:
             delta = ticker_data.modelGreeks.delta
             delta_diff = abs(delta - SHORT_DELTA_TARGET)
-            
+
             if delta <= SHORT_DELTA_TARGET + 0.15 and delta_diff < best_delta_diff:
                 best_option = contract
                 best_delta_diff = delta_diff
