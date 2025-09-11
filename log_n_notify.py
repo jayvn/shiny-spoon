@@ -159,7 +159,9 @@ def log_option_trade(
             strike,
             expiry,
             trade_price,
-            **tg.format_trade_alert_params(delta, pnl, cumulative_pnl, notes),
+            delta=delta,
+            pnl=pnl,
+            cumulative_pnl=cumulative_pnl,
         )
 
 

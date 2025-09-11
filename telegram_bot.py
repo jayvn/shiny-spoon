@@ -9,10 +9,6 @@ from pathlib import Path
 
 import requests
 
-# Global config
-CONFIG = None
-
-
 with Path("telegram_config.json").open("r") as f:
     CONFIG = json.load(f)
 
@@ -35,6 +31,7 @@ def send_message(message: str, parse_mode: str = "Markdown") -> bool:
         return True
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to send Telegram message: {e}")
+        return False
 
 
 def send_trade_alert(
